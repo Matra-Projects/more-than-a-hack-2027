@@ -1,0 +1,10 @@
+# Core & Evaluation dependencies
+numpy
+pandas
+
+# Ball detection (detect_ball_play_time.py)
+ultralytics
+torch
+opencv-python
+
+

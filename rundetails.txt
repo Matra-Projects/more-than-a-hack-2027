@@ -1,0 +1,112 @@
+================================================================================
+RUN DETAILS: STEP-BY-STEP GUIDE TO RUN ON NEW OR REPLACED `data/` & GET SCORES
+================================================================================
+Pipeline : team_engine_v12_slow_out_dead (current v12)
+Scripts  : detect_ball_play_time.py -> build_submission.py
+           -> evaluation/validate_submission.py -> evaluation/run_evaluation.py
+
+All scripts now resolve paths DYNAMICALLY relative to the repository root,
+`MTAH_DATA_DIR`, or `--data-dir` (no hardcoded `/media/...` or fixed video
+filenames required).
+
+
+--------------------------------------------------------------------------------
+STEP 0: REPLACE `data/` (OR POINT TO A CUSTOM DATA FOLDER)
+--------------------------------------------------------------------------------
+Place the tactical match bundle inside `./data/tactical/` (or any custom folder):
+
+  <DATA_DIR>/
+  `-- tactical/
+      |-- <STEM>.mp4
+      |-- <STEM>_atd.xml
+      |-- <STEM>_atd.txt
+      |-- <STEM>_homography.csv
+      `-- <STEM>_smart_tagging.xml
+
+If your data is in a different location instead of `./data/`, set ONE of:
+  Option A (Environment variable, applies to all scripts automatically):
+    export MTAH_DATA_DIR=/path/to/your/data
+
+  Option B (CLI flag on each command):
+    --data-dir /path/to/your/data
+
+Note: Only `tactical/` is ever used; `broadcast/` is never read.
+
+
+--------------------------------------------------------------------------------
+STEP 1: DETECT & CLEAN THE BALL FROM THE TACTICAL VIDEO
+--------------------------------------------------------------------------------
+This runs YOLO ball detection on play-time spans from the Smart Tagging XML,
+filters outside-pitch false positives with homography, applies the 45-frame
+sliding-window trajectory cleaner, and saves:
+  * `<DATA_DIR>/ball_detections.json`
+  * `<DATA_DIR>/ball_detections_cleaned.json`
+
+Run using `./data/` (or `$MTAH_DATA_DIR`):
+  python3 detect_ball_play_time.py --device 0
+
+Or pass `--data-dir` alone (all tactical video, XML, homography, and output
+JSONs inside that directory are resolved automatically):
+  python3 detect_ball_play_time.py --data-dir /path/to/your/data --device 0
+
+(Optional: if you already have `ball_detections_cleaned.json` placed inside
+`<DATA_DIR>/`, you can skip Step 1 and go straight to Step 2.)
+
+
+--------------------------------------------------------------------------------
+STEP 2: BUILD THE v12 POSSESSION PREDICTION CSV (199,319 FRAMES)
+--------------------------------------------------------------------------------
+All v12 flags are now enabled BY DEFAULT and `--out` defaults to
+`evaluation/results/Matra.csv`:
+
+  python3 build_submission.py
+
+Or specify a custom output path / data dir / FPS:
+  python3 build_submission.py --out evaluation/results/Matra.csv
+  python3 build_submission.py --data-dir /path/to/your/data --fps 30
+
+
+--------------------------------------------------------------------------------
+STEP 3: VALIDATE SUBMISSION FORMAT & LABEL COUNTS
+--------------------------------------------------------------------------------
+Verify row count, headers, valid H/A/D/X labels, and summary possession stats:
+
+  python3 evaluation/validate_submission.py evaluation/results/Matra.csv
+
+Expected output starts with `OK` and prints frame counts for H, A, D, X.
+
+
+--------------------------------------------------------------------------------
+STEP 4: RUN EVALUATION TO GET SCORES (PUBLIC 5-MIN OR PRIVATE FULL MATCH)
+--------------------------------------------------------------------------------
+A) Score all CSVs in `evaluation/results/` against the public 5-minute GT:
+  python3 evaluation/run_evaluation.py --no-detail
+
+B) Score against the full-match private GT (`evaluation/gt/*_possession_gt.csv`):
+  python3 evaluation/run_evaluation.py --gt private --no-detail
+
+C) Score against a custom ground-truth CSV path:
+  python3 evaluation/run_evaluation.py --gt /path/to/ground_truth.csv --no-detail
+
+D) Include detailed per-error / transition breakdown (omit `--no-detail`):
+  python3 evaluation/run_evaluation.py
+
+Scoreboard outputs are also written to `evaluation/reports/` (e.g. `scoreboard.csv`).
+
+
+--------------------------------------------------------------------------------
+STEP 5 (OPTIONAL): RENDER ANNOTATED HALF-MATCH VIDEOS ON GPU
+--------------------------------------------------------------------------------
+Render 1st Half and 2nd Half with predicted possession banner, player/GK boxes,
+and cleaned + near-player tracked ball overlay:
+
+  python3 render_match_half_video.py --half 1 \
+    --pred evaluation/results/team_engine_v12_slow_out_dead.csv \
+    --no-atd-ball --track-near-player-gaps
+
+  python3 render_match_half_video.py --half 2 \
+    --pred evaluation/results/team_engine_v12_slow_out_dead.csv \
+    --no-atd-ball --track-near-player-gaps
+
+(Pass `--data-dir /path/to/your/data` if not using `./data/` or `MTAH_DATA_DIR`.)
+================================================================================
